@@ -1,0 +1,2 @@
+model_checkpoint_path: "nvdm_minibatch-0"
+all_model_checkpoint_paths: "nvdm_minibatch-0"
