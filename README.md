@@ -6,24 +6,6 @@ To train the model:
 
 python train_model_CA_small.py
 
-You should see output like this:
-
-Cost 34.8374481201 is
-Cost 35.203125 is
-Cost 38.5284080505 is
-Cost 39.0439414978 is
-Cost 45.2037277222 is
-Cost 37.8635635376 is
-Cost 28.7984447479 is
-Cost 31.7935199738 is
-Cost 29.0405216217 is
-Cost 34.4803314209 is
-Epoch: 0001 cost= 0.739152149
- [*] Saving checkpoints...
-saved in checkpoint/nvdm_minibatch
-Cost 34.8526992798 is
-...
-
 Also, there will be an output file total_loss_Nov11_small.py, which contains four major items:
 
 epoch # + ' ' + minibatch # + ' ' + reconstuction loss + ' ' + KL divergence (for each review in the minibatch).
