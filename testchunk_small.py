@@ -22,7 +22,7 @@ class testLoader():
 		#print 'type of self.data', type(self.data)
 		#self._vocab(self.data)
 		#self._vocab_inverse()
-		print 'self.vocab', self.vocab
+		#print 'self.vocab', self.vocab
 
 	def get_batch(self, batch_size):
 		sourceiter = iter(self.data)
@@ -45,15 +45,30 @@ class testLoader():
 		words_out = [word for word in words_out if not word in cached_stopwords and len(word)>0 and word in self.vocab]
 		return words_out
 
-	def _bag_of_words(self, chunk_data, vocab_size=None):
+	def _bag_of_words(self, review, vocab_size=None):
 		if vocab_size == None:
 			vocab_size = len(self.vocab)
-		voc_to_idx = self._vocab_to_idx(chunk_data)
-		#self.bow = np.bincount(map(self.vocab.get, chunk_data), minlength=vocab_size)
+		#print 'review', review #CA This is actually 10 reviews - I see all 10
+		#print 'len(review)', len(review) #CA This is 10.
+		#lengths_vec = [len(rev) for rev in review]
+		# #ends up being characters print 'lengths_vec', lengths_vec #should be 10 elements, each is the number of words in a review
+		voc_to_idx = self._vocab_to_idx(review)
 		self.bow = [np.bincount(idx, minlength=vocab_size) for idx in voc_to_idx]
+		#print 'self.bow', self.bow[0][0:100]
+		#print 'self.bow', self.bow[0][101:200]
 		self.bow = np.array(self.bow)
+		div = (self.bow != 0).sum(1)
+		#print 'div is', div
+		div = div.astype(np.float32)
+		#print 'div float is', div
 		self.dow = self.bow.copy()
-		self.dow[self.dow > 0] = 1 #Selecting words that appear in the review
+		self.bow = self.bow / div[:, None]
+		#print 'self.bow', self.bow[0][0:100]
+		#print 'self.bow', self.bow[0][101:200]	
+		#self.bow = np.sum(self.bow, axis=0) #Added by CA 11 November 2016, but commented out because wrong: want to preserve shape
+		#div = np.full(vocab_size, len(review))
+		#self.bow = np.array(self.bow)/div #Added by CA 11 November 2016: division by number of words in review
+		self.dow[self.dow > 0] = 1 #Selecting words that appear in the review. This is the mask fed in to partial in train
 		self.negative_mask = self.dow.copy()
 		self.negative_mask[self.negative_mask == 0] = -1 #self.negative_mask = 1 or -1
 		return self.bow, self.dow, self.negative_mask
@@ -86,17 +101,20 @@ if __name__ == "__main__":
 	
 	batch_data = Instance1.get_batch(batch_size)
 	#CAROLYN - UNCOMMENT THIS
-	#for batch_ in batch_data:
-	#	#collected_data = [chunks for chunks in batch_]
-	#	#bow, dow, negative_mask = Instance1._bag_of_words(collected_data)
-	#	bow, dow, negative_mask = Instance1._bag_of_words(batch_)
-	#	print bow.shape, dow.shape, negative_mask.shape
-	#	print bow.max(), dow.max(), negative_mask.max()
-	#
-	#	break
+	for batch_ in batch_data:
+		collected_data = [chunks for chunks in batch_]
+		bow, dow, negative_mask = Instance1._bag_of_words(collected_data)
+		#bow, dow, negative_mask = Instance1._bag_of_words(batch_)
+		print bow.shape, dow.shape, negative_mask.shape
+		print bow.max(), dow.max(), negative_mask.max()
+		print bow[0][0:100]
+		print bow[0][101:200]
+		print bow[0][201:300]
+	
+		break
 
-	#print "first batch:"
-	#print next(next(batch_data))
+#	print "first batch:"
+#	print next(next(batch_data))
 #	#print "NEXT REVIEW"
 #	#print next(next(batch_data))
 #	
@@ -106,7 +124,14 @@ if __name__ == "__main__":
 #
 #	print 'bag of words'
 #	bow1 = Instance1._bag_of_words(preprocessed)
-#	print len(bow1[0])
+#	print 'bow1[0][0:100]', bow1[0][0:100]
+
+	#preprocessed2 = Instance1.preprocess(next(next(batch_data)))
+	#print 'bag of words'
+	#bow2 = Instance1._bag_of_words(preprocessed2)
+	#print 'bow2[0][0:100]', bow2[0][0:100]
+	#print 'len(bow1[0])', len(bow1[0][0])
+	#print 'bag of words divided', bow1[0][0]/len(bow1[0][0])
 #	print 'dow'
 #	print len(bow1[1])
 #	print 'negative mask'

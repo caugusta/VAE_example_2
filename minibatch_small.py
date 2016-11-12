@@ -9,7 +9,7 @@ from testchunk_small import testLoader
 
 class nvdm_minibatch(object):
 
-	def __init__(self, sess, input_dim, hidden_dim, encoder_hidden_dim, generator_hidden_dim,  initializer = tf.random_normal, transfer_fct = tf.nn.relu, output_activation = tf.nn.sigmoid, batch_size=10, learning_rate=0.001, mode='gather'):
+	def __init__(self, sess, input_dim, hidden_dim, encoder_hidden_dim, generator_hidden_dim,  initializer = tf.random_normal, transfer_fct = tf.nn.relu, output_activation = tf.nn.softmax, batch_size=10, learning_rate=0.001, mode='gather'):
 
 		self.transfer_fct = transfer_fct
 		self.output_activation = output_activation
@@ -98,8 +98,13 @@ class nvdm_minibatch(object):
 		generator_results = {}
 
 		with tf.variable_scope("generator_function"):
-
-			x_reconstr_mean = self.output_activation(tf.add(-1*(tf.matmul(self.z, weights['out_mean'])), biases['out_mean']))
+			for i in xrange(len(weights) - 2):
+				if i == 0:
+					decoder_results['res_{}'.format(i)] = self.transfer_fct(tf.add(tf.matmul(self.z, weights['W_{}'.format(i)]), biases['b_{}'.format(i)]))
+				else:
+					decoder_results['res_{}'.format(i)] = self.transfer_fct(tf.add(tf.matmul(decoder_results['res_{}'.format(i-1)], weights['W_{}'.format(i)]), biases['b_{}'.format(i)])) 		
+			x_reconstr_mean = self.output_activation(tf.add(tf.matmul(self.z, weights['out_mean']), biases['out_mean']))
+			print 'x_reconstr_mean shape', tf.shape(x_reconstr_mean)
 			return x_reconstr_mean
 
 
@@ -110,24 +115,41 @@ class nvdm_minibatch(object):
 			self.log_recons = tf.log(self.X_reconstruction_mean + 1e-10)
 
 		if self.mode == 'gather':
-			self.interm_res = tf.log(tf.gather(tf.reshape(self.X_reconstruction_mean, [-1]), self.gather_mask) + 1e-10)
-			self.reconstr_loss = reconstr_loss = -tf.reduce_sum(self.interm_res)
+			#CA: UNCOMMENT THIS FOR ORIGINAL
+			#self.interm_res = tf.log(tf.gather(tf.reshape(self.X_reconstruction_mean, [-1]), self.gather_mask) + 1e-10)
+			#self.reconstr_loss = reconstr_loss = -tf.reduce_sum(self.interm_res)
 
+			self.reconstr_loss = reconstr_loss = -tf.reduce_sum(self.x*tf.log(self.X_reconstruction_mean + 1e-10) + (1 - self.x)*tf.log(1e-10 + 1 - self.X_reconstruction_mean), 1)
+			#print 'self.interm_res', self.interm_res
+			#print 'self.reconstr_loss', self.reconstr_loss
+			#print 'shape of reconstr_loss', tf.shape(self.reconstr_loss)
+			###self.reconstr_loss = reconstr_loss = -tf.reduce_sum(self.x*tf.log(1e-10 + self.X_reconstruction_mean, [-1]) + (1 - self.x)*tf.log(1e-10 + 1 - self.X_reconstruction_mean), 1) #from https://jmetzen.github.io/2015-11-27/vae.html
+			#print 'shape of self.gather_mask', tf.shape(self.gather_mask) #(1,)
+			#print 'shape of tf.reshape(self.X_reconstruction_mean, [-1])', tf.shape(tf.reshape(self.X_reconstruction_mean, [-1])) #(1,)
+			#print 'shape of tf.log(..)', tf.shape(tf.log(tf.gather(tf.reshape(self.X_reconstruction_mean, [-1]), self.gather_mask) + 1e-10)) #(1,)
+			#print 'shape of self.x', tf.shape(self.x) #(2,) #Should be of shape (10, 1207).
+			#print 'shape of gathering', tf.shape(tf.gather(tf.reshape(self.X_reconstruction_mean, [-1]), self.gather_mask)) #(1,)
+			#print 'shape of mult', tf.shape(self.x*tf.log(tf.gather(tf.reshape(self.X_reconstruction_mean, [-1]), self.gather_mask) + 1e-10)) #(2,)
+			#print 'shape of reduce_sum', tf.shape(-tf.reduce_sum(self.x*tf.log(tf.gather(tf.reshape(self.X_reconstruction_mean, [-1]), self.gather_mask) + 1e-10)))
+			#print 'shape of reduce_sum 2', tf.shape((tf.ones_like(self.x) - self.x)*tf.log(tf.gather(tf.reshape(self.X_reconstruction_mean, [-1]), self.gather_mask) + 1e-10))
+			#self.reconstr_loss = reconstr_loss = -tf.reduce_sum(self.x*tf.log(tf.gather(tf.reshape(self.X_reconstruction_mean, [-1]), self.gather_mask) + 1e-10) + (1 - self.x)*tf.log(tf.gather(tf.reshape(self.X_reconstruction_mean, [-1]), self.gather_mask) + 1e-10), 1) #Added by CA 
 			self.latent_loss = latent_loss = -0.5 * tf.reduce_sum(1 + self.z_log_sigma_sq - tf.square(self.z_mean) - tf.exp(self.z_log_sigma_sq), 1)
 
 			self.cost = tf.reduce_mean(reconstr_loss + latent_loss)
 
 			self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.cost)
 
-	def partial_fit(self, X, dynamic_batch_size, MASK):
+	def partial_fit(self, X, dynamic_batch_size, MASK): #modified CA: added reconstr_loss and latent_loss
 
 		if self.mode == 'gather':
-			opt, cost, recons_loss = self.sess.run((self.optimizer, self.cost, self.reconstr_loss), feed_dict = {self.x: X, self.dynamic_batch_size:dynamic_batch_size, self.gather_mask:MASK})
+			#print 'X is', X
+			#print 'shape of X is', X.shape #[10, 1207]
+			opt, cost, recons_loss, lat_loss  = self.sess.run((self.optimizer, self.cost, self.reconstr_loss, self.latent_loss), feed_dict = {self.x: X, self.dynamic_batch_size:dynamic_batch_size, self.gather_mask:MASK})
 
 		else:
-			opt, const, recons_loss = self.sess.run((self.optimizer, self.cost, self.reconstr_loss), feed_dict = {self.x:X, self.dynamic_batch_size: dynamic_batch_size, self.mask:MASK})
+			opt, cost, recons_loss, lat_loss = self.sess.run((self.optimizer, self.cost, self.reconstr_loss, self.latent_loss), feed_dict = {self.x:X, self.dynamic_batch_size: dynamic_batch_size, self.mask:MASK})
 
-		return cost, recons_loss
+		return cost, recons_loss, lat_loss
 
 	def transform(self, X):
 		return self.sess.run(self.z_mean, feed_dict={self.X: X})

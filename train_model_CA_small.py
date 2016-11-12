@@ -36,7 +36,7 @@ if __name__ == "__main__":
 
     with tf.Session() as sess_1:
 	#vae = nvdm_minibatch(sess_1, len(A.vocab), hidden_dim=50, encoder_hidden_dim=[500, 500], initializer=xavier_init, output_activation=tf.nn.softmax)
-        vae = nvdm_minibatch(sess=sess_1 , input_dim=len(A.vocab), hidden_dim=5, encoder_hidden_dim =[20, 20], generator_hidden_dim = [], initializer = xavier_init, transfer_fct=tf.nn.relu , output_activation=tf.nn.softmax, batch_size=5, learning_rate = 0.001, mode = 'gather')
+        vae = nvdm_minibatch(sess=sess_1 , input_dim=len(A.vocab), hidden_dim=5, encoder_hidden_dim =[20, 20], generator_hidden_dim = [20, 20], initializer = xavier_init, transfer_fct=tf.nn.relu , output_activation=tf.nn.softmax, batch_size=5, learning_rate = 0.001, mode = 'gather')
             
         vae._train()
         # Training cycle
@@ -47,44 +47,43 @@ if __name__ == "__main__":
         save_step = 10 #save every epoch
 	count_epoch = 0
 	count_minibatch = 0
-	filename = "total_loss_Nov8_small.txt"
+	filename = "total_loss_Nov11_small.txt"
+	with open(filename, 'w') as f:	
+	        for epoch in range(training_epochs):
+          	    batch_data = A.get_batch(batch_size)
+            	    avg_cost = 0.
+	            total_batch = int(n_samples / batch_size)
+	            # Loop over all batches
+	            batch_id = 0
+		    count_epoch += 1
+	            for batch_ in batch_data:
+				count_minibatch +=1
+		#	print 'minibatch', count_minibatch
+	               		collected_data = [chunks for chunks in batch_]
+	                ##### Here batch_xs ( Bag of words with count of words)
+	                ##### Here mask_xs  ( Bag of words with 1 at the index of words in doc , no counts)
+	                ##### Here mask_negative is not using ( Tried with negative sampling )
+	      	 		batch_xs , mask_xs , mask_negative  = A._bag_of_words(collected_data)
+	                ###### Here batch_flattened gives position of words in all documents into one array
+	                ###### because gather_nd does not support gradients . So , we have to use tf.gather
+	               		batch_flattened = np.ravel(batch_xs)
+	               		index_positions = np.where( batch_flattened > 0 )[0] ####### We want locs where , data ( word ) present in document 
 	
-        for epoch in range(training_epochs):
-            batch_data = A.get_batch(batch_size)
-            avg_cost = 0.
-            total_batch = int(n_samples / batch_size)
-            # Loop over all batches
-            batch_id = 0
-	    count_epoch += 1
-	    with open(filename, 'w') as f:
-            	for batch_ in batch_data:
-			count_minibatch +=1
-                	collected_data = [chunks for chunks in batch_]
-                ##### Here batch_xs ( Bag of words with count of words)
-                ##### Here mask_xs  ( Bag of words with 1 at the index of words in doc , no counts)
-                ##### Here mask_negative is not using ( Tried with negative sampling )
-               	 	batch_xs , mask_xs , mask_negative  = A._bag_of_words(collected_data)
-                ###### Here batch_flattened gives position of words in all documents into one array
-                ###### because gather_nd does not support gradients . So , we have to use tf.gather
-                	batch_flattened = np.ravel(batch_xs)
-                	index_positions = np.where( batch_flattened > 0 )[0] ####### We want locs where , data ( word ) present in document 
-
-                # Fit training using batch data
-                	if vae.mode == 'gather':
-                    
-                    		cost , R_loss_  = vae.partial_fit(find_norm(batch_xs) , batch_xs.shape[0] , index_positions)
-                	else:
-                    		cost , R_loss_  = vae.partial_fit(mask_xs , batch_xs.shape[0] , mask_xs.astype(np.float32))
-
-                	avg_cost += cost
-                	print "Cost {} is".format(cost)
-                	if count_minibatch % 1 == 0: #every minibatches of size 5, so every 5 examples
-				f.write(str(count_epoch) + ' ' + str(count_minibatch) + ' '+ str(cost) + ' ' + str(avg_cost))
-
-            # Display logs per epoch step
-            	if epoch % display_step == 0:
-                	print "Epoch:", '%04d' % (epoch+1), \
-                      	"cost=", "{:.9f}".format(avg_cost/total_batch)
-
-            	if epoch % save_step == 0:
-                	vae.save(checkpoint_dir = "checkpoint", global_step = epoch)
+	                # Fit training using batch data
+	               		if vae.mode == 'gather':
+	                   
+	                  		cost , R_loss_, l_loss  = vae.partial_fit(find_norm(batch_xs) , batch_xs.shape[0] , index_positions)
+	                	else:
+	                    		cost , R_loss_, l_loss  = vae.partial_fit(mask_xs , batch_xs.shape[0] , mask_xs.astype(np.float32))
+	                	avg_cost += cost/(n_samples*batch_size) #CA: modified to divide by n_samples*batch_size
+	                	print "Cost {} is".format(cost)
+				f.write(str(count_epoch) + ' ' + str(count_minibatch) + ' '+ str(cost) + ' ' + str(avg_cost) + ' ' + str(R_loss_) + '\n')
+	                	#if count_minibatch % 1 == 0: #every minibatches of size 5, so every 5 examples
+	
+	            # Display logs per epoch step
+	            if epoch % display_step == 0:
+	      		print "Epoch:", '%04d' % (epoch+1), \
+	       		"cost=", "{:.9f}".format(avg_cost/total_batch)
+	
+	            if epoch % save_step == 0:
+	               	vae.save(checkpoint_dir = "checkpoint", global_step = epoch)
